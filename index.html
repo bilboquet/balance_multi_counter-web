@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#111111">
+<link rel="icon" type="image/png" sizes="512x512" href="icon.png">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="manifest" href="manifest.json">
+<title>Multi Counter</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{font-family:system-ui,sans-serif;background:#111;color:#fff;min-height:100dvh;display:flex;flex-direction:column;align-items:center;touch-action:manipulation}
+  h1{font-size:18px;margin:14px 0 8px;opacity:.7}
+  #grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:12px;width:min(420px,100vw)}
+  .btn{aspect-ratio:1;border-radius:32px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-weight:700;user-select:none;cursor:pointer;position:relative}
+  .btn span.icon{font-size:22px;line-height:1}
+  .btn span.txt{font-size:28px;line-height:1.1}
+  .btn small{position:absolute;bottom:10px;font-size:11px;opacity:.45}
+  #center{margin:6px auto;width:min(420px,100vw);padding:0 12px}
+  #menu{width:100%;padding:18px;border-radius:24px;border:0;background:#333;color:#fff;font-size:18px;font-weight:600}
+  #overlay{position:fixed;inset:0;background:#000;display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:10;padding:24px}
+  #overlay.show{display:flex}
+  #overlay p{font-size:22px}
+  .row{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
+  .row button{padding:16px 20px;border-radius:14px;border:0;color:#fff;font-size:16px;font-weight:600;min-width:120px}
+  .arch{background:#2962ff}.reset{background:#d50000}.cancel{background:#555}.danger{background:#2962ff}
+  #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:#222;border:1px solid #333;padding:10px 16px;border-radius:999px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none}
+  #toast.show{opacity:1}
+</style>
+</head>
+<body>
+<h1>Multi Counter · escalade</h1>
+<div id="grid"></div>
+<div id="center"><button id="menu">menu</button></div>
+<div id="overlay"></div>
+<div id="toast"></div>
+<script>
+const COLORS=['#00c853','#2962ff','#7c4dff','#d50000']
+const PRESS=['#009624','#0039cb','#5e35b1','#9a0007']
+const KEY='multi_counter_v1'
+const DEFAULT=[{count:0,goal:0},{count:0,goal:0},{count:0,goal:0},{count:0,goal:0}]
+function load(){ try{ const r=localStorage.getItem(KEY); if(!r) return structuredClone(DEFAULT); const a=JSON.parse(r); if(!Array.isArray(a)) return structuredClone(DEFAULT); return [0,1,2,3].map(i=>({count:a[i]?.count??0,goal:a[i]?.goal??0})) }catch{ return structuredClone(DEFAULT)} }
+function save(a){ localStorage.setItem(KEY, JSON.stringify(a)) }
+function textFor(c){ const base=c.goal>0?`${c.count}/${c.goal}`:`${c.count}`; if(!c.goal) return base; if(c.count===c.goal) return '✓\n'+base; if(c.count>c.goal) return '★\n'+base; return base }
+let counters=load()
+const grid=document.getElementById('grid')
+const overlay=document.getElementById('overlay')
+const toastEl=document.getElementById('toast')
+let toastT=null
+function toast(t){ toastEl.textContent=t; toastEl.classList.add('show'); clearTimeout(toastT); toastT=setTimeout(()=>toastEl.classList.remove('show'),1400) }
+function render(){
+  grid.innerHTML=''
+  counters.forEach((c,i)=>{
+    const d=document.createElement('div')
+    d.className='btn'; d.style.background=COLORS[i]
+    const parts=textFor(c).split('\n')
+    if(parts.length===2){ const ic=document.createElement('span'); ic.className='icon'; ic.textContent=parts[0]; d.appendChild(ic); const tx=document.createElement('span'); tx.className='txt'; tx.textContent=parts[1]; d.appendChild(tx) }
+    else { const tx=document.createElement('span'); tx.className='txt'; tx.textContent=parts[0]; d.appendChild(tx) }
+    const sm=document.createElement('small'); sm.textContent='tap +1 · long -1'; d.appendChild(sm)
+    // inc on tap, dec on longpress
+    let timer=null, long=false
+    const start=()=>{ long=false; timer=setTimeout(()=>{ long=true; dec(i); if(navigator.vibrate) navigator.vibrate(20) },450) }
+    const cancel=()=> clearTimeout(timer)
+    const end=()=>{ clearTimeout(timer); if(!long) inc(i) }
+    d.addEventListener('touchstart',start,{passive:true}); d.addEventListener('touchend',end); d.addEventListener('touchcancel',cancel)
+    d.addEventListener('mousedown',start); d.addEventListener('mouseup',end); d.addEventListener('mouseleave',cancel)
+    // prevent context menu on longpress
+    d.addEventListener('contextmenu',e=>e.preventDefault())
+    grid.appendChild(d)
+  })
+}
+function inc(i){ counters[i].count+=1; save(counters); render(); toast(textFor(counters[i]).replace('\n',' ')) }
+function dec(i){ if(counters[i].count<=0) return; counters[i].count-=1; save(counters); render(); toast(textFor(counters[i]).replace('\n',' ')) }
+function doArchive(){
+  const hadGoal=counters.some(c=>c.goal>0)
+  const allZero=counters.every(c=>c.count===0)
+  counters.forEach(c=>{ c.goal=c.count; c.count=0 })
+  save(counters); render(); toast(allZero&&hadGoal?'objectifs effacés':'archivé')
+}
+function doReset(){ counters.forEach(c=>c.count=0); save(counters); render(); toast('reset') }
+function showConfirm(){
+  overlay.classList.add('show')
+  const hasGoal=counters.some(c=>c.goal>0)
+  overlay.innerHTML=`<p>Que faire ?</p><div class="row">
+    <button class="arch" id="bA">ARCHIVER</button>
+    <button class="reset" id="bR">RESET</button>
+    <button class="cancel" id="bC">ANNULER</button></div>`
+  document.getElementById('bC').onclick=hideConfirm
+  document.getElementById('bR').onclick=()=>{ doReset(); hideConfirm() }
+  document.getElementById('bA').onclick=()=>{
+    if(hasGoal){ hideConfirm(); showArchiveConfirm(); return }
+    doArchive(); hideConfirm()
+  }
+}
+function showArchiveConfirm(){
+  overlay.classList.add('show')
+  overlay.innerHTML=`<p>Écraser les</p><p>objectifs ?</p><div class="row">
+    <button class="danger" id="bY">ÉCRASER</button>
+    <button class="cancel" id="bN">ANNULER</button></div>`
+  document.getElementById('bN').onclick=hideConfirm
+  document.getElementById('bY').onclick=()=>{ doArchive(); hideConfirm() }
+}
+function hideConfirm(){ overlay.classList.remove('show'); overlay.innerHTML='' }
+document.getElementById('menu').onclick=showConfirm
+overlay.addEventListener('click',e=>{ if(e.target===overlay) hideConfirm() })
+render()
+// PWA: register sw if present
+if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{})
+</script>
+</body>
+</html>
