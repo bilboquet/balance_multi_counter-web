@@ -49,6 +49,7 @@ const overlay=document.getElementById('overlay')
 const toastEl=document.getElementById('toast')
 let toastT=null
 function toast(t){ toastEl.textContent=t; toastEl.classList.add('show'); clearTimeout(toastT); toastT=setTimeout(()=>toastEl.classList.remove('show'),1400) }
+let longFired=[false,false,false,false]
 function render(){
   grid.innerHTML=''
   counters.forEach((c,i)=>{
@@ -58,13 +59,11 @@ function render(){
     if(parts.length===2){ const ic=document.createElement('span'); ic.className='icon'; ic.textContent=parts[0]; d.appendChild(ic); const tx=document.createElement('span'); tx.className='txt'; tx.textContent=parts[1]; d.appendChild(tx) }
     else { const tx=document.createElement('span'); tx.className='txt'; tx.textContent=parts[0]; d.appendChild(tx) }
     const sm=document.createElement('small'); sm.textContent='tap +1 · long -1'; d.appendChild(sm)
-    // inc on tap, dec on longpress — pointer events unified (évite double inc touch+mouse sur mobile)
-    let timer=null, long=false
-    const start=(e)=>{ if(e.button!==0) return; long=false; timer=setTimeout(()=>{ long=true; dec(i); if(navigator.vibrate) navigator.vibrate(20) },450) }
-    const cancel=()=> clearTimeout(timer)
-    const end=()=>{ clearTimeout(timer); if(!long) inc(i) }
+    let timer=null
+    const start=(e)=>{ if(e.button!==0) return; longFired[i]=false; timer=setTimeout(()=>{ longFired[i]=true; dec(i); if(navigator.vibrate) navigator.vibrate(20) },450) }
+    const cancel=()=>{ clearTimeout(timer); longFired[i]=false }
+    const end=()=>{ clearTimeout(timer); if(!longFired[i]) inc(i); longFired[i]=false }
     d.addEventListener('pointerdown',start); d.addEventListener('pointerup',end); d.addEventListener('pointercancel',cancel); d.addEventListener('pointerleave',cancel)
-    // prevent context menu on longpress
     d.addEventListener('contextmenu',e=>e.preventDefault())
     grid.appendChild(d)
   })
@@ -104,7 +103,6 @@ function hideConfirm(){ overlay.classList.remove('show'); overlay.innerHTML='' }
 document.getElementById('menu').onclick=showConfirm
 overlay.addEventListener('click',e=>{ if(e.target===overlay) hideConfirm() })
 render()
-// PWA: register sw if present
 if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{})
 </script>
 </body>
